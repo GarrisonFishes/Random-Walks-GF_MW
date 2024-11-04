@@ -4,27 +4,7 @@ author: "Ferone"
 date: "2024-08-08"
 output: html_document
 ---
-
-```{r setup, include=FALSE}
-
-```
-
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
-```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-# Function to check if a point is within a red circle
+```{r Random Walk Visual, echo=TRUE}
 is_within_red_circle <- function(x, y, diameter) {
   sqrt(x^2 + y^2) <= diameter / 2
 }
@@ -37,6 +17,189 @@ semi_circle_points <- function(center_x, center_y, diameter, num_points) {
   return(data.frame(x, y))
 }
 
+# Function to perform random walk with boundaries enforcement (Changes direction when approchaing boundary)
+random_walk_with_boundaries <- function(num_steps, step_length, interval_duration, boundary_radius, initial_position) {
+  positions <- matrix(nrow = num_steps + 1, ncol = 2)
+  positions[1, ] <- initial_position
+  
+  for (i in 2:(num_steps + 1)) {
+    # Swimming Velocity is now random with a maximum value of the assigned step length
+    velo <- step_length * runif(1,0,1)
+    # Generate a random direction
+    direction <- runif(1, 0, 2 * pi)
+    
+    # Update position
+    new_x <- positions[i - 1, 1] + velo * cos(direction)
+    new_y <- positions[i - 1, 2] + velo * sin(direction)
+    
+    # Check if the new position exceeds the boundary, if so, adjust it
+    distance_from_center <- sqrt(new_x^2 + new_y^2)
+    if (distance_from_center > boundary_radius) {
+      scale_factor <- boundary_radius / distance_from_center
+      new_x <- new_x * scale_factor
+      new_y <- new_y * scale_factor
+    }
+    
+    # Check if the new position exceeds the x = 0 boundary, if so, adjust it
+    if (new_x < 0) {
+      new_x <- 0
+    }
+    
+    positions[i, ] <- c(new_x, new_y)
+  }
+  
+  return(data.frame(positions))
+}
+
+# Function to generate points along the path every N minutes
+# Function to generate points along the path every N minutes with detection probabilities
+generate_positions_every_N_minutes <- function(path_df, interval_duration, diameter, N) {
+  positions <- list()
+  for (i in 1:nrow(path_df)) {
+    if ((i - 1) %% (interval_duration / N) == 0) {
+      positions[[length(positions) + 1]] <- path_df[i, c("X1", "X2")]
+    }
+  }
+  positions_df <- do.call(rbind, positions)
+  
+  # Add a time column starting from 0 seconds for 1-minute intervals
+  if (N == 1) {
+    positions_df$time <- seq(0, by = 60, length.out = nrow(positions_df))
+  }
+  
+  # Function to generate presence/absence along the path every second
+  enerate_positions_every_second <- function(path_df, interval_duration, diameter) {
+    positions <- list()
+    for (i in 1:nrow(path_df)) {
+      positions[[length(positions) + 1]] <- path_df[i, c("X1", "X2")]
+    }
+    positions_df <- do.call(rbind, positions)
+    
+    # Add a time column starting from 0 seconds for each second
+    positions_df$time <- rep(0:(nrow(positions_df) - 1), each = interval_duration)
+    
+    # Calculate Presence based on the red semicircle
+    positions_df$Presence <- sapply(1:nrow(positions_df), function(i) {
+      is_within_red_circle(positions_df[i, "X1"], positions_df[i, "X2"], diameter)
+    })
+    
+    return(positions_df)
+  }
+  
+  # Prob of Detection based on the red, orange, and pink semicircle location
+  positions_df$Detection <- sapply(1:nrow(positions_df), function(i) {
+    x <- positions_df[i, "X1"]
+    y <- positions_df[i, "X2"]
+    distance_from_center <- sqrt(x^2 + y^2)
+    if (distance_from_center <= diameter / 4) {
+      return(TRUE)  # 100% chance of detection inside the pink scircle
+    } else if (distance_from_center <= diameter * 0.75 / 2) {
+      return(runif(1) <= 0.75)  # 75% chance of detection between the orange and pink scircles
+    } else if (distance_from_center <= diameter / 2) {
+      return(runif(1) <= 0.5)  # 50% chance of detection between the red and orange circles
+    } else {
+      return(FALSE)
+    }
+  })
+  
+  return(positions_df)
+}
+
+
+# Parameters
+diameter <- 500  # Diameter of the circular receiver in meters
+speed_blue <- 2  # Speed of the blue sharks in meters per second
+simulation_duration <- 60*60*24  # Duration of simulation in seconds (1 day)
+interval_duration <- 60*5  # Interval duration for detection in seconds (5 minutes)
+boundary_radius <- 50000  # Radius of the boundary from the center of the largest circle
+N <- 1  #  1 minute interval
+
+# Calculate number of steps
+num_steps <- simulation_duration
+
+# Step length (equal to the speed of the sharks)
+step_length <- speed_blue
+
+# Perform random walk with boundaries
+blue_path <- random_walk_with_boundaries(num_steps, step_length, interval_duration, boundary_radius, initial_position = c(100, 0))
+
+# Add time column
+blue_path$time <- seq(0, by = 1, length.out = nrow(blue_path))
+
+# Calculate detection based on the red semi-circle condition
+blue_path$Detection <- sapply(1:nrow(blue_path), function(i) {
+  is_within_red_circle(blue_path[i, "X1"], blue_path[i, "X2"], diameter)
+})
+# Generate positions every 5 minutes
+positions_every_5_minutes <- generate_positions_every_N_minutes(blue_path, interval_duration, diameter, N)
+positions_every_5_minutes$time <- seq(0, by = 300, length.out = nrow(positions_every_5_minutes))
+
+# Generate positions every 1 minute
+positions_every_1_minute <- generate_positions_every_N_minutes(blue_path, interval_duration, diameter, 5)
+positions_every_1_minute$time <- seq(0, by = 60, length.out = nrow(positions_every_1_minute))
+
+
+# Semi circle construction
+semi_circle_points_large <- semi_circle_points(0, 0, diameter, num_points = 1000)
+semi_circle_points_medium <- semi_circle_points(0, 0, diameter * 0.75, num_points = 1000)
+semi_circle_points_small <- semi_circle_points(0, 0, diameter * 0.5, num_points = 1000)
+
+# Plot the random walk
+ggplot() +
+  geom_path(data = blue_path, aes(x = X1, y = X2), color = "blue", linewidth = 0.05) +
+  geom_point(data = positions_every_5_minutes, aes(x = X1, y = X2, color = Detection), size = 0.5) +
+  geom_point(data = positions_every_1_minute, aes(x = X1, y = X2, color = Detection), size = 0.001, shape = 1, color = "black") +
+  geom_point(data = semi_circle_points_large, aes(x, y), color = "red", size = 0.3) +
+  geom_point(data = semi_circle_points_medium, aes(x, y), color = "orange", size = 0.3) +
+  geom_point(data = semi_circle_points_small, aes(x, y), color = "pink", size = 0.3) +
+  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +  #vertical boundary line
+  coord_equal() +  # Equal aspect ratio-
+  labs(x = "X (meters)", y = "Y (meters)", color = "Detection") +  # Axis labels
+  ggtitle("Random Walk of Blue Shark in Semi-Circular Receiver") +  # Title
+  theme_minimal()  # Minimal theme
+
+ggplot() +
+  geom_path(data = blue_path, aes(x = X1, y = X2), color = "black", linewidth = 0.1) +
+  geom_point(data = positions_every_5_minutes, aes(x = X1, y = X2, color = Detection), size = 0.09) +  # Reduced size for green/red points
+  geom_point(data = positions_every_1_minute, aes(x = X1, y = X2, color = Detection), size = 0.09) +  # Reduced size for green/red points
+  geom_point(data = semi_circle_points_large, aes(x, y), color = "red", size = 0.3) +
+  geom_point(data = semi_circle_points_medium, aes(x, y), color = "orange", size = 0.3) +
+  geom_point(data = semi_circle_points_small, aes(x, y), color = "pink", size = 0.3) +
+  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +  # Vertical boundary line
+  coord_equal() +  # Equal aspect ratio
+  labs(x = "X (meters)", y = "Y (meters)", color = "Detection") +  # Axis labels
+  ggtitle("Non-Random Walk of 1 Shark in Semi-Circular Receiver") +  # Title
+  scale_color_manual(values = c("TRUE" = "green3", "FALSE" = "firebrick2")) +  # Custom colors for Detection
+  theme_minimal()  # Minimal theme
+
+ggplot() +
+  geom_path(data = blue_path, aes(x = X1, y = X2), color = "blue3", linewidth = 0.1) +
+  
+  geom_point(data = semi_circle_points_large, aes(x, y), color = "red", size = 0.3) +
+  geom_point(data = semi_circle_points_medium, aes(x, y), color = "orange", size = 0.3) +
+  geom_point(data = semi_circle_points_small, aes(x, y), color = "pink", size = 0.3) +
+  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +  # Vertical boundary line
+  coord_equal() +  # Equal aspect ratio
+  labs(x = "X (meters)", y = "Y (meters)", color = "Detection") +  # Axis labels
+  ggtitle("Non-Random Walk of 1 Shark in Semi-Circular Receiver") +  # Title
+  scale_color_manual(values = c("TRUE" = "green3", "FALSE" = "firebrick2")) +  # Custom colors for Detection
+  theme_minimal()  # Minimal theme
+```
+Now we run trials of this model and make some calculations with different thresholds / etc.
+
+
+```{r Random Walk Model: 1,000 trials, echo=TRUE}
+# Function to check if a point is within a red circle
+is_within_red_circle <- function(x, y, diameter) {
+  sqrt(x^2 + y^2) <= diameter / 2
+}
+# Function to generate points for a semi-circle
+semi_circle_points <- function(center_x, center_y, diameter, num_points) {
+  theta <- seq(-pi/2, pi/2, length.out = num_points)  # Generate theta between -pi/2 and pi/2 for semi-circle
+  x <- center_x + diameter/2 * cos(theta)
+  y <- center_y + diameter/2 * sin(theta)
+  return(data.frame(x, y))
+}
 #Random walk with boundary
 random_walk_with_boundaries <- function(num_steps, step_length, interval_duration, boundary_radius, initial_position) {
   positions <- matrix(nrow = num_steps + 1, ncol = 2)
@@ -211,692 +374,5 @@ ggplot(melted_data, aes(x = value, fill = variable)) +
   labs(x = "Number of Visits", y = "Frequency", title = "Histograms of Site Visits") +
   theme_minimal() +
   theme(legend.position = "none")
-```
-```{r correlation analysis}
-# Select relevant columns for correlation analysis
-cor_data <- final_result_table[, -1]  # Exclude the 'Trial' column
-
-# Calculate the correlation matrix
-correlation_matrix <- cor(cor_data)
-
-# Print the correlation matrix
-print(correlation_matrix)
-
-# Plot the correlation matrix using a heatmap
-library(corrplot)
-corrplot(correlation_matrix, method = "color", addCoef.col = "black", tl.col = "black", tl.srt = 45)
-
-```
-```{r mean analysis}
-
-# Calculate means for each metric
-mean_values <- colMeans(cor_data)
-
-# Calculate variances for each metric
-variance_values <- apply(cor_data, 2, var)
-
-# Create a data frame for the results
-mean_variance_table <- data.frame(Metric = names(mean_values), Mean = mean_values, Variance = variance_values)
-
-# Print the mean and variance table
-print(mean_variance_table)
-
-```
-
-```{r directed walks}
-# Function to perform a non-random walk with slight angled turns
-non_random_walk_with_boundaries <- function(num_steps, step_length, interval_duration, boundary_radius, initial_position, max_turn_angle) {
-  positions <- matrix(nrow = num_steps + 1, ncol = 2)
-  positions[1, ] <- initial_position
-
-  # Start with an initial direction pointing upwards (towards the receiver)
-  current_direction <- pi / 2
-
-  for (i in 2:(num_steps + 1)) {
-    # Adjust direction slightly
-    turn_angle <- runif(1, -max_turn_angle, max_turn_angle)
-    current_direction <- current_direction + turn_angle
-
-    # Update position
-    new_x <- positions[i - 1, 1] + step_length * cos(current_direction)
-    new_y <- positions[i - 1, 2] + step_length * sin(current_direction)
-
-    # Check if the new position exceeds the boundary, if so, adjust it
-    distance_from_center <- sqrt(new_x^2 + new_y^2)
-    if (distance_from_center > boundary_radius) {
-      scale_factor <- boundary_radius / distance_from_center
-      new_x <- new_x * scale_factor
-      new_y <- new_y * scale_factor
-    }
-
-    # Check if the new position exceeds the x = 0 boundary, if so, adjust it
-    if (new_x < 0) {
-      new_x <- 0
-    }
-
-    positions[i, ] <- c(new_x, new_y)
-  }
-
-  return(data.frame(positions))
-}
-
-# Parameters
-diameter <- 250  # Diameter of the circular receiver in meters
-speed_blue <- 2  # Speed of the blue sharks in meters per second
-simulation_duration <- 60*5  # Duration of simulation in seconds (1 day)
-interval_duration <- 60*5  # Interval duration for detections in seconds (5 minutes)
-boundary_radius <- 50000  # Radius of the boundary from the center of the largest circle
-initial_position <- c(50, -200)  # Start at the point (50, -200)  # Start just underneath the receiver
-max_turn_angle <- pi / 36  # Maximum turn angle of 5 degrees
-
-# Calculate number of steps
-num_steps <- simulation_duration
-
-# Perform non-random walk with boundaries
-blue_path <- non_random_walk_with_boundaries(num_steps, speed_blue, interval_duration, boundary_radius, initial_position, max_turn_angle)
-
-# Add time column
-blue_path$time <- seq(0, by = 1, length.out = nrow(blue_path))
-
-# Calculate detection based on the red semi-circle condition
-blue_path$Detection <- sapply(1:nrow(blue_path), function(i) {
-  is_within_red_circle(blue_path[i, "X1"], blue_path[i, "X2"], diameter)
-})
-
-# Generate positions every 5 minutes
-positions_every_5_minutes <- generate_positions_every_N_minutes(blue_path, interval_duration, diameter, N)
-positions_every_5_minutes$time <- seq(0, by = 300, length.out = nrow(positions_every_5_minutes))
-
-# Generate positions every 1 minute
-positions_every_1_minute <- generate_positions_every_N_minutes(blue_path, interval_duration, diameter, 5)
-positions_every_1_minute$time <- seq(0, by = 60, length.out = nrow(positions_every_1_minute))
-
-# Semi-circle construction
-semi_circle_points_large <- semi_circle_points(0, 0, diameter, num_points = 1000)
-semi_circle_points_medium <- semi_circle_points(0, 0, diameter * 0.75, num_points = 1000)
-semi_circle_points_small <- semi_circle_points(0, 0, diameter * 0.5, num_points = 1000)
-
-# Plot the non-random walk
-
-ggplot() +
-  geom_path(data = blue_path, aes(x = X1, y = X2), color = "blue", linewidth = 0.5) +
-  geom_point(data = positions_every_5_minutes, aes(x = X1, y = X2, color = Detection), size = 3) +
-  geom_point(data = positions_every_1_minute, aes(x = X1, y = X2, color = Detection), size = 1) +
-  geom_point(data = semi_circle_points_large, aes(x, y), color = "red", size = 0.3) +
-  geom_point(data = semi_circle_points_medium, aes(x, y), color = "orange", size = 0.3) +
-  geom_point(data = semi_circle_points_small, aes(x, y), color = "pink", size = 0.3) +
-  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +  # Vertical boundary line
-  coord_equal() +  # Equal aspect ratio
-  labs(x = "X (meters)", y = "Y (meters)", color = "Detection") +  # Axis labels
-  ggtitle("Non-Random Walk of 1 Shark in Semi-Circular Receiver") +  # Title
-  scale_color_manual(values = c("TRUE" = "green3", "FALSE" = "firebrick2")) +  # Custom colors for Detection
-  theme_minimal()  # Minimal theme
-
-
-
-
-```
-
-```{r now}
-# Continue with the rest of the code as before
-residency_1_sec <- sum(blue_path$Detection) / nrow(blue_path)
-residency_1_min <- sum(positions_every_1_minute$Detection) / nrow(positions_every_1_minute)
-residency_5_min <- sum(positions_every_5_minutes$Detection) / nrow(positions_every_5_minutes)
-hourvisit_count_1_sec <- count_visits(blue_path$Detection, threshold = 3600)
-hourvisit_count_1_min <- count_visits(positions_every_1_minute$Detection, threshold = 60)
-hourvisit_count_5_min <- count_visits(positions_every_5_minutes$Detection, threshold = 12)
-twohourvisit_count_1_sec <- count_visits(blue_path$Detection, threshold = 7200)
-twohourvisit_count_1_min <- count_visits(positions_every_1_minute$Detection, threshold = 120)
-twohourvisit_count_5_min <- count_visits(positions_every_5_minutes$Detection, threshold = 24)
-
-halfhourvisit_count_1_sec <- count_visits(blue_path$Detection, threshold = 1800)
-halfhourvisit_count_1_min <- count_visits(positions_every_1_minute$Detection, threshold = 30)
-halfhourvisit_count_5_min <- count_visits(positions_every_5_minutes$Detection, threshold = 6)
-
-# Create the result table
-result_table <- data.frame(
-  "1 Second Residency" = residency_1_sec,
-  "1 Minute Residency" = residency_1_min,
-  "5 Minute Residency" = residency_5_min,
-  "1 Hour Visits (1 Second)" = hourvisit_count_1_sec,
-  "1 Hour Visits (1 Minute)" = hourvisit_count_1_min,
-  "1 Hour Visits (5 Minutes)" = hourvisit_count_5_min,
-  "2 Hour Visits (1 Second)" = twohourvisit_count_1_sec,
-  "2 Hour Visits (1 Minute)" = twohourvisit_count_1_min,
-  "2 Hour Visits (5 Minutes)" = twohourvisit_count_5_min,
-  "Half Hour Visits (1 Second)" = halfhourvisit_count_1_sec,
-  "Half Hour Visits (1 Minute)" = halfhourvisit_count_1_min,
-  "Half Hour Visits (5 Minutes)" = halfhourvisit_count_5_min
-)
-
-print(result_table)
-
-ggplot(blue_path, aes(x = time, y = Detection, color = Detection)) +
-  geom_point(size = 0.01) +
-  labs(x = "Time", y = "Inside Receiver Range", color = "Detection") +
-  ggtitle("1 sec Timeline Plot of Shark Path") +
-  theme_minimal()
-
-# Plot timeline for positions_every_1_minute
-ggplot(positions_every_1_minute, aes(x = time, y = Detection, color = Detection)) +
-  geom_point(size = 0.01) +
-  labs(x = "Time", y = "Detection", color = "Detection") +
-  ggtitle("Timeline Plot of Detection in positions_every_1_minute") +
-  theme_minimal()
-
-# Plot timeline for positions_every_5_minutes
-ggplot(positions_every_5_minutes, aes(x = time, y = Detection, color = Detection)) +
-  geom_point(size = 0.01) +
-  labs(x = "Time", y = "Detection", color = "Detection") +
-  ggtitle("Timeline Plot of Detection in positions_every_5_minutes") +
-  theme_minimal()
-
-```
-
-```{r newest}
-non_random_walk_with_boundaries <- function(num_steps, step_length, interval_duration, boundary_radius, max_turn_angle) {
-  # Randomize initial position within the specified range
-  initial_x <- runif(1, 5, 120)
-  initial_y <- runif(1, -500, -125)
-  initial_position <- c(initial_x, initial_y)
-  
-  positions <- matrix(nrow = num_steps + 1, ncol = 2)
-  positions[1, ] <- initial_position
-
-  # Start with an initial direction pointing upwards (towards the receiver)
-  current_direction <- pi / 2
-
-  for (i in 2:(num_steps + 1)) {
-    # Adjust direction slightly
-    turn_angle <- runif(1, -max_turn_angle, max_turn_angle)
-    current_direction <- current_direction + turn_angle
-
-    # Update position
-    new_x <- positions[i - 1, 1] + step_length * cos(current_direction)
-    new_y <- positions[i - 1, 2] + step_length * sin(current_direction)
-
-    # Check if the new position exceeds the boundary, if so, adjust it
-    distance_from_center <- sqrt(new_x^2 + new_y^2)
-    if (distance_from_center > boundary_radius) {
-      scale_factor <- boundary_radius / distance_from_center
-      new_x <- new_x * scale_factor
-      new_y <- new_y * scale_factor
-    }
-
-    # Check if the new position exceeds the x = 0 boundary, if so, adjust it
-    if (new_x < 0) {
-      new_x <- 0
-    }
-
-    positions[i, ] <- c(new_x, new_y)
-  }
-
-  return(data.frame(positions))
-}
-
-# Parameters
-diameter <- 250  # Diameter of the circular receiver in meters
-speed_blue <- 2  # Speed of the blue sharks in meters per second
-simulation_duration <- 60*5  # Duration of simulation in seconds (5 minutes)
-interval_duration <- 60*5  # Interval duration for detections in seconds (5 minutes)
-boundary_radius <- 50000  # Radius of the boundary from the center of the largest circle
-max_turn_angle <- pi / 36  # Maximum turn angle of 5 degrees
-
-# Calculate number of steps
-num_steps <- simulation_duration
-
-# Perform non-random walk with boundaries
-blue_path <- non_random_walk_with_boundaries(num_steps, speed_blue, interval_duration, boundary_radius, max_turn_angle)
-
-# Add time column
-blue_path$time <- seq(0, by = 1, length.out = nrow(blue_path))
-
-# Calculate detection based on the red semi-circle condition
-blue_path$Detection <- sapply(1:nrow(blue_path), function(i) {
-  is_within_red_circle(blue_path[i, "X1"], blue_path[i, "X2"], diameter)
-})
-
-# Generate positions every 5 minutes
-positions_every_5_minutes <- generate_positions_every_N_minutes(blue_path, interval_duration, diameter, N)
-positions_every_5_minutes$time <- seq(0, by = 300, length.out = nrow(positions_every_5_minutes))
-
-# Generate positions every 1 minute
-positions_every_1_minute <- generate_positions_every_N_minutes(blue_path, interval_duration, diameter, 5)
-positions_every_1_minute$time <- seq(0, by = 60, length.out = nrow(positions_every_1_minute))
-
-# Semi-circle construction
-semi_circle_points_large <- semi_circle_points(0, 0, diameter, num_points = 1000)
-semi_circle_points_medium <- semi_circle_points(0, 0, diameter * 0.75, num_points = 1000)
-semi_circle_points_small <- semi_circle_points(0, 0, diameter * 0.5, num_points = 1000)
-
-# Plot the non-random walk
-ggplot() +
-  geom_path(data = blue_path, aes(x = X1, y = X2), color = "blue", linewidth = 0.5) +
-  geom_point(data = positions_every_5_minutes, aes(x = X1, y = X2, color = Detection), size = 3) +
-  geom_point(data = positions_every_1_minute, aes(x = X1, y = X2, color = Detection), size = 1) +
-  geom_point(data = semi_circle_points_large, aes(x, y), color = "red", size = 0.3) +
-  geom_point(data = semi_circle_points_medium, aes(x, y), color = "orange", size = 0.3) +
-  geom_point(data = semi_circle_points_small, aes(x, y), color = "pink", size = 0.3) +
-  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +  # Vertical boundary line
-  coord_equal() +  # Equal aspect ratio
-  labs(x = "X (meters)", y = "Y (meters)", color = "Detection") +  # Axis labels
-  ggtitle("Non-Random Walk of 1 Shark in Semi-Circular Receiver") +  # Title
-  scale_color_manual(values = c("TRUE" = "green3", "FALSE" = "firebrick2")) +  # Custom colors for Detection
-  theme_minimal()  # Minimal theme
-
-
-```
-
-```{r exper}
-non_random_walk_with_boundaries <- function(num_steps, step_length, interval_duration, boundary_radius, max_turn_angle) {
-  # Randomize initial position within the specified range
-  initial_x <- runif(1, 5, 120)
-  initial_y <- runif(1, -500, -125)
-  initial_position <- c(initial_x, initial_y)
-  
-  positions <- matrix(nrow = num_steps + 1, ncol = 2)
-  positions[1, ] <- initial_position
-
-  # Start with an initial direction pointing upwards (towards the receiver)
-  current_direction <- pi / 2
-
-  for (i in 2:(num_steps + 1)) {
-    # Adjust direction slightly
-    turn_angle <- runif(1, -max_turn_angle, max_turn_angle)
-    
-    # Bias the direction away from the x = 0 boundary if close to it
-    if (positions[i - 1, 1] < 20) {  # If x is less than 20 meters
-      turn_angle <- turn_angle + pi / 18  # Add a small bias (10 degrees) to turn right
-    }
-    
-    current_direction <- current_direction + turn_angle
-
-    # Update position
-    new_x <- positions[i - 1, 1] + step_length * cos(current_direction)
-    new_y <- positions[i - 1, 2] + step_length * sin(current_direction)
-
-    # Check if the new position exceeds the boundary, if so, adjust it
-    distance_from_center <- sqrt(new_x^2 + new_y^2)
-    if (distance_from_center > boundary_radius) {
-      scale_factor <- boundary_radius / distance_from_center
-      new_x <- new_x * scale_factor
-      new_y <- new_y * scale_factor
-    }
-
-    # Check if the new position exceeds the x = 0 boundary, if so, adjust it
-    if (new_x < 0) {
-      new_x <- 0
-    }
-
-    positions[i, ] <- c(new_x, new_y)
-  }
-
-  return(data.frame(positions))
-}
-
-# Parameters
-diameter <- 250  # Diameter of the circular receiver in meters
-speed_blue <- 2  # Speed of the blue sharks in meters per second
-simulation_duration <- 60 * 5  # Duration of simulation in seconds (5 minutes)
-interval_duration <- 60 * 5  # Interval duration for detections in seconds (5 minutes)
-boundary_radius <- 50000  # Radius of the boundary from the center of the largest circle
-max_turn_angle <- pi / 36  # Maximum turn angle of 5 degrees
-
-# Calculate number of steps
-num_steps <- simulation_duration
-
-# Perform non-random walk with boundaries
-blue_path <- non_random_walk_with_boundaries(num_steps, speed_blue, interval_duration, boundary_radius, max_turn_angle)
-
-# Add time column
-blue_path$time <- seq(0, by = 1, length.out = nrow(blue_path))
-
-# Calculate detection based on the red semi-circle condition
-blue_path$Detection <- sapply(1:nrow(blue_path), function(i) {
-  is_within_red_circle(blue_path[i, "X1"], blue_path[i, "X2"], diameter)
-})
-
-# Generate positions every 5 minutes
-positions_every_5_minutes <- generate_positions_every_N_minutes(blue_path, interval_duration, diameter, N)
-positions_every_5_minutes$time <- seq(0, by = 300, length.out = nrow(positions_every_5_minutes))
-
-# Generate positions every 1 minute
-positions_every_1_minute <- generate_positions_every_N_minutes(blue_path, interval_duration, diameter, 5)
-positions_every_1_minute$time <- seq(0, by = 60, length.out = nrow(positions_every_1_minute))
-
-# Semi-circle construction
-semi_circle_points_large <- semi_circle_points(0, 0, diameter, num_points = 1000)
-semi_circle_points_medium <- semi_circle_points(0, 0, diameter * 0.75, num_points = 1000)
-semi_circle_points_small <- semi_circle_points(0, 0, diameter * 0.5, num_points = 1000)
-
-# Plot the non-random walk
-ggplot() +
-  geom_path(data = blue_path, aes(x = X1, y = X2), color = "blue", linewidth = 0.5) +
-  geom_point(data = positions_every_5_minutes, aes(x = X1, y = X2, color = Detection), size = 3) +
-  geom_point(data = positions_every_1_minute, aes(x = X1, y = X2, color = Detection), size = 1) +
-  geom_point(data = semi_circle_points_large, aes(x, y), color = "red", size = 0.3) +
-  geom_point(data = semi_circle_points_medium, aes(x, y), color = "orange", size = 0.3) +
-  geom_point(data = semi_circle_points_small, aes(x, y), color = "pink", size = 0.3) +
-  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +  # Vertical boundary line
-  coord_equal() +  # Equal aspect ratio
-  labs(x = "X (meters)", y = "Y (meters)", color = "Detection") +  # Axis labels
-  ggtitle("Non-Random Walk of 1 Shark in Semi-Circular Receiver") +  # Title
-  scale_color_manual(values = c("TRUE" = "green3", "FALSE" = "firebrick2")) +  # Custom colors for Detection
-  theme_minimal()  # Minimal theme
-
-```
-
-
-
-```{r CURIOUS SHARK and AGGRESSIVE SHARK}
-curious_shark_walk <- function(num_steps, step_length, interval_duration, boundary_radius, max_turn_angle) {
-  # Randomize initial position within the specified range
-  initial_x <- runif(1, 5, 120)
-  initial_y <- runif(1, -200, -125)
-  initial_position <- c(initial_x, initial_y)
-  
-  positions <- matrix(nrow = num_steps + 1, ncol = 2)
-  positions[1, ] <- initial_position
-
-  # Start with an initial direction
-  current_direction <- pi / 2
-
-  for (i in 2:(num_steps + 1)) {
-    # Frequent and wide direction changes
-    turn_angle <- runif(1, -max_turn_angle * 2, max_turn_angle * 2)
-    
-    # Bias the direction away from the x = 0 boundary if close to it
-    if (positions[i - 1, 1] < 20) {  
-      turn_angle <- turn_angle + pi / 12  
-    }
-    
-    current_direction <- current_direction + turn_angle
-
-    # Update position
-    new_x <- positions[i - 1, 1] + step_length * cos(current_direction)
-    new_y <- positions[i - 1, 2] + step_length * sin(current_direction)
-
-    # Boundary check
-    distance_from_center <- sqrt(new_x^2 + new_y^2)
-    if (distance_from_center > boundary_radius) {
-      scale_factor <- boundary_radius / distance_from_center
-      new_x <- new_x * scale_factor
-      new_y <- new_y * scale_factor
-    }
-
-    if (new_x < 0) {
-      new_x <- 0
-    }
-
-    positions[i, ] <- c(new_x, new_y)
-  }
-
-  return(data.frame(positions))
-}
-
-# Parameters for Curious Shark
-curious_speed <- 1.5  # Slower speed
-curious_max_turn_angle <- pi / 18  # More frequent direction changes
-num_steps_curious <- simulation_duration * 2
-
-curious_shark_path <- curious_shark_walk(num_steps_curious, curious_speed, interval_duration, boundary_radius, curious_max_turn_angle)
-
-
-aggressive_shark_walk <- function(num_steps, step_length, interval_duration, boundary_radius, max_turn_angle) {
-  # Randomize initial position within the specified range
-  initial_x <- runif(1, 5, 120)
-  initial_y <- runif(1, -200, -125)
-  initial_position <- c(initial_x, initial_y)
-  
-  positions <- matrix(nrow = num_steps + 1, ncol = 2)
-  positions[1, ] <- initial_position
-
-  # Start with an initial direction
-  current_direction <- pi / 2
-
-  for (i in 2:(num_steps + 1)) {
-    # Less frequent and narrower direction changes
-    turn_angle <- runif(1, -max_turn_angle, max_turn_angle)
-    
-    # Bias the direction away from the x = 0 boundary if close to it
-    if (positions[i - 1, 1] < 20) {  
-      turn_angle <- turn_angle + pi / 36  
-    }
-    
-    current_direction <- current_direction + turn_angle
-
-    # Update position
-    new_x <- positions[i - 1, 1] + step_length * cos(current_direction)
-    new_y <- positions[i - 1, 2] + step_length * sin(current_direction)
-
-    # Boundary check
-    distance_from_center <- sqrt(new_x^2 + new_y^2)
-    if (distance_from_center > boundary_radius) {
-      scale_factor <- boundary_radius / distance_from_center
-      new_x <- new_x * scale_factor
-      new_y <- new_y * scale_factor
-    }
-
-    if (new_x < 0) {
-      new_x <- 0
-    }
-
-    positions[i, ] <- c(new_x, new_y)
-  }
-
-  return(data.frame(positions))
-}
-
-# Parameters for Aggressive Shark
-aggressive_speed <- 2  # Faster speed
-aggressive_max_turn_angle <- pi / 72  # Less frequent direction changes
-num_steps_aggressive <- simulation_duration
-
-aggressive_shark_path <- aggressive_shark_walk(num_steps_aggressive, aggressive_speed, interval_duration, boundary_radius, aggressive_max_turn_angle)
-
-
-
-
-library(ggplot2)
-
-# Generate positions every 5 minutes for Curious Shark
-positions_every_5_minutes_curious <- generate_positions_every_N_minutes(curious_shark_path, interval_duration, diameter, N)
-positions_every_5_minutes_curious$time <- seq(0, by = 300, length.out = nrow(positions_every_5_minutes_curious))
-
-# Generate positions every 1 minute for Curious Shark
-positions_every_1_minute_curious <- generate_positions_every_N_minutes(curious_shark_path, interval_duration, diameter, 5)
-positions_every_1_minute_curious$time <- seq(0, by = 60, length.out = nrow(positions_every_1_minute_curious))
-
-# Generate positions every 5 minutes for Aggressive Shark
-positions_every_5_minutes_aggressive <- generate_positions_every_N_minutes(aggressive_shark_path, interval_duration, diameter, N)
-positions_every_5_minutes_aggressive$time <- seq(0, by = 300, length.out = nrow(positions_every_5_minutes_aggressive))
-
-# Generate positions every 1 minute for Aggressive Shark
-positions_every_1_minute_aggressive <- generate_positions_every_N_minutes(aggressive_shark_path, interval_duration, diameter, 5)
-positions_every_1_minute_aggressive$time <- seq(0, by = 60, length.out = nrow(positions_every_1_minute_aggressive))
-
-# Plotting both shark paths with the same style
-ggplot() +
-  # Curious Shark path
-  geom_path(data = curious_shark_path, aes(x = X1, y = X2), color = "blue", linewidth = 0.5, linetype = "dotted") +
-  geom_point(data = positions_every_5_minutes_curious, aes(x = X1, y = X2, color = Detection), size = 3, shape = 21, fill = "blue") +
-  geom_point(data = positions_every_1_minute_curious, aes(x = X1, y = X2, color = Detection), size = 1, shape = 21, fill = "blue") +
-  
-  # Aggressive Shark path
-  geom_path(data = aggressive_shark_path, aes(x = X1, y = X2), color = "orange", linewidth = 0.5, linetype = "dotted") +
-  geom_point(data = positions_every_5_minutes_aggressive, aes(x = X1, y = X2, color = Detection), size = 3, shape = 24, fill = "red") +
-  geom_point(data = positions_every_1_minute_aggressive, aes(x = X1, y = X2, color = Detection), size = 1, shape = 24, fill = "red") +
-  
-  # Semi-circle boundaries
-  geom_point(data = semi_circle_points_large, aes(x, y), color = "black", size = 0.3) +
-  geom_point(data = semi_circle_points_medium, aes(x, y), color = "darkgray", size = 0.3) +
-  geom_point(data = semi_circle_points_small, aes(x, y), color = "lightgray", size = 0.3) +
-  
-  # Vertical boundary line
-  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
-  
-  # Styling and labels
-  coord_equal() +
-  labs(x = "X (meters)", y = "Y (meters)", color = "Detection") +
-  ggtitle("Comparison of Curious and Aggressive Shark Movements") +
-  scale_color_manual(values = c("TRUE" = "green3", "FALSE" = "firebrick2")) +
-  theme_minimal()
-
-
-```
-
-
-```{r analysis of this}
-curious_shark_walk <- function(num_steps, step_length, interval_duration, boundary_radius, max_turn_angle) {
-  # Randomize initial position within the specified range
-  initial_x <- runif(1, 5, 120)
-  initial_y <- runif(1, -600, 0)
-  initial_position <- c(initial_x, initial_y)
-  
-  positions <- matrix(nrow = num_steps + 1, ncol = 2)
-  positions[1, ] <- initial_position
-
-  # Start with an initial direction
-  current_direction <- pi / 2
-
-  for (i in 2:(num_steps + 1)) {
-    # Slight adjustments for direction
-    turn_angle <- runif(1, -max_turn_angle, max_turn_angle)
-    
-    # Bias the direction slightly to ensure they move forward
-    if (positions[i - 1, 1] < 20) {  
-      turn_angle <- turn_angle + pi / 36  
-    }
-    
-    current_direction <- current_direction + turn_angle
-
-    # Update position
-    new_x <- positions[i - 1, 1] + step_length * cos(current_direction)
-    new_y <- positions[i - 1, 2] + step_length * sin(current_direction)
-
-    # Boundary check
-    distance_from_center <- sqrt(new_x^2 + new_y^2)
-    if (distance_from_center > boundary_radius) {
-      scale_factor <- boundary_radius / distance_from_center
-      new_x <- new_x * scale_factor
-      new_y <- new_y * scale_factor
-    }
-
-    if (new_x < 0) {
-      new_x <- 0
-    }
-
-    positions[i, ] <- c(new_x, new_y)
-  }
-
-  return(data.frame(positions))
-}
-
-# Parameters for Curious Shark
-curious_speed <- 1  # Slower speed
-curious_max_turn_angle <- pi / 36  # Slight direction changes
-num_steps_curious <- simulation_duration * 2
-
-curious_shark_path <- curious_shark_walk(num_steps_curious, curious_speed, interval_duration, boundary_radius, curious_max_turn_angle)
-
-
-aggressive_shark_walk <- function(num_steps, step_length, interval_duration, boundary_radius, max_turn_angle) {
-  # Randomize initial position within the specified range
-  initial_x <- runif(1, 5, 120)
-  initial_y <- runif(1, -600, 0)
-  initial_position <- c(initial_x, initial_y)
-  
-  positions <- matrix(nrow = num_steps + 1, ncol = 2)
-  positions[1, ] <- initial_position
-
-  # Start with an initial direction
-  current_direction <- pi / 2
-
-  for (i in 2:(num_steps + 1)) {
-    # Very slight adjustments for direction
-    turn_angle <- runif(1, -max_turn_angle / 2, max_turn_angle / 2)
-    
-    # Bias the direction slightly to ensure they move forward
-    if (positions[i - 1, 1] < 20) {  
-      turn_angle <- turn_angle + pi / 72  
-    }
-    
-    current_direction <- current_direction + turn_angle
-
-    # Update position
-    new_x <- positions[i - 1, 1] + step_length * cos(current_direction)
-    new_y <- positions[i - 1, 2] + step_length * sin(current_direction)
-
-    # Boundary check
-    distance_from_center <- sqrt(new_x^2 + new_y^2)
-    if (distance_from_center > boundary_radius) {
-      scale_factor <- boundary_radius / distance_from_center
-      new_x <- new_x * scale_factor
-      new_y <- new_y * scale_factor
-    }
-
-    if (new_x < 0) {
-      new_x <- 0
-    }
-
-    positions[i, ] <- c(new_x, new_y)
-  }
-
-  return(data.frame(positions))
-}
-
-# Parameters for Aggressive Shark
-aggressive_speed <- 2  # Faster speed
-aggressive_max_turn_angle <- pi / 144  # Minimal direction changes
-num_steps_aggressive <- simulation_duration
-
-aggressive_shark_path <- aggressive_shark_walk(num_steps_aggressive, aggressive_speed, interval_duration, boundary_radius, aggressive_max_turn_angle)
-
-library(ggplot2)
-
-# Generate positions every 5 minutes for Curious Shark
-positions_every_5_minutes_curious <- generate_positions_every_N_minutes(curious_shark_path, interval_duration, diameter, N)
-positions_every_5_minutes_curious$time <- seq(0, by = 300, length.out = nrow(positions_every_5_minutes_curious))
-
-# Generate positions every 1 minute for Curious Shark
-positions_every_1_minute_curious <- generate_positions_every_N_minutes(curious_shark_path, interval_duration, diameter, 5)
-positions_every_1_minute_curious$time <- seq(0, by = 60, length.out = nrow(positions_every_1_minute_curious))
-
-# Generate positions every 5 minutes for Aggressive Shark
-positions_every_5_minutes_aggressive <- generate_positions_every_N_minutes(aggressive_shark_path, interval_duration, diameter, N)
-positions_every_5_minutes_aggressive$time <- seq(0, by = 300, length.out = nrow(positions_every_5_minutes_aggressive))
-
-# Generate positions every 1 minute for Aggressive Shark
-positions_every_1_minute_aggressive <- generate_positions_every_N_minutes(aggressive_shark_path, interval_duration, diameter, 5)
-positions_every_1_minute_aggressive$time <- seq(0, by = 60, length.out = nrow(positions_every_1_minute_aggressive))
-
-# Plotting both shark paths with the same style
-ggplot() +
-  # Curious Shark path
-  geom_path(data = curious_shark_path, aes(x = X1, y = X2), color = "blue", linewidth = 0.5, linetype = "dotted") +
-  geom_point(data = positions_every_5_minutes_curious, aes(x = X1, y = X2, color = Detection), size = 3, shape = 21, fill = "blue") +
-  geom_point(data = positions_every_1_minute_curious, aes(x = X1, y = X2, color = Detection), size = 1, shape = 21, fill = "blue") +
-  
-  # Aggressive Shark path
-  geom_path(data = aggressive_shark_path, aes(x = X1, y = X2), color = "orange", linewidth = 0.5, linetype = "dotted") +
-  geom_point(data = positions_every_5_minutes_aggressive, aes(x = X1, y = X2, color = Detection), size = 3, shape = 24, fill = "red") +
-  geom_point(data = positions_every_1_minute_aggressive, aes(x = X1, y = X2, color = Detection), size = 1, shape = 24, fill = "red") +
-  
-  # Semi-circle boundaries
-  geom_point(data = semi_circle_points_large, aes(x, y), color = "black", size = 0.3) +
-  geom_point(data = semi_circle_points_medium, aes(x, y), color = "darkgray", size = 0.3) +
-  geom_point(data = semi_circle_points_small, aes(x, y), color = "lightgray", size = 0.3) +
-  
-  # Vertical boundary line
-  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
-  
-  # Styling and labels
-  coord_equal() +
-  labs(x = "X (meters)", y = "Y (meters)", color = "Detection") +
-  ggtitle("Comparison of Curious and Aggressive Shark Movements") +
-  scale_color_manual(values = c("TRUE" = "green3", "FALSE" = "firebrick2")) +
-  theme_minimal()
-
-
 ```
 
