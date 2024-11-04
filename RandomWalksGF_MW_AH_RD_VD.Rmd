@@ -121,8 +121,8 @@ count_visits <- function(detections, threshold) {
 }
 
 # Parameters of the 2 dimensional space - map that illustrates the reciever
-diameter <- 250  # Diameter of the circular receiver in meters
-speed_blue <- 2  # Speed of the sharks in meters per second - set at 1 mps (SPEED IS CHANGEABLE HERE)
+diameter <- 500  # Diameter of the circular receiver in meters
+speed_blue <- 1  # Speed of the sharks in meters per second - set at 1 mps (SPEED IS CHANGEABLE HERE)
 simulation_duration <- 60*60*24  # Duration of simulation in seconds (1 day) (TRIAL DURATION CHANGEABLE HERE)
 interval_duration <- 60*5  # Interval duration for detections in seconds (5 minutes) (INTERVAL PING DELAY CHANGEABLE HERE)
 boundary_radius <- 50000  # Radius of the boundary from the center of the largest circle
