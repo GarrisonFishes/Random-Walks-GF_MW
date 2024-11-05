@@ -358,6 +358,100 @@ write.csv(final_result_table, file = "siteviststable.csv", row.names = FALSE)
 
 ```
 
+```{r visit counts analysis}
+#structure/melt data table
+spc_tbl_combined <- df %>%
+  # Select relevant columns
+  select(Trial, 
+         X1.Hour.Visits..1.Second., X2.Hour.Visits..1.Second., half.Hour.Visits..1.Second.,
+         X1.Hour.Visits..1.Minute., X2.Hour.Visits..1.Minute., half.Hour.Visits..1.Minute.,
+         X1.Hour.Visits..5.Minutes., X2.Hour.Visits..5.Minutes., half.Hour.Visits..5.Minutes.) %>%
+  
+  # Gather the columns into long format
+  gather(key = "Visit_Type", value = "Visit_Count", 
+         X1.Hour.Visits..1.Second., X2.Hour.Visits..1.Second., half.Hour.Visits..1.Second.,
+         X1.Hour.Visits..1.Minute., X2.Hour.Visits..1.Minute., half.Hour.Visits..1.Minute.,
+         X1.Hour.Visits..5.Minutes., X2.Hour.Visits..5.Minutes., half.Hour.Visits..5.Minutes.) %>%
+  
+  # Create new columns to distinguish interval and threshold
+  separate(Visit_Type, into = c("Threshold", "Interval"), sep = "\\.Visits\\.\\.") %>%
+  
+  # Arrange the columns in the desired order
+  mutate(Interval = case_when(
+    grepl("1.Second", Interval) ~ "1.Second",
+    grepl("1.Minute", Interval) ~ "1.Minute",
+    grepl("5.Minutes", Interval) ~ "5.Minutes"
+  )) %>%
+  # Rename the columns
+  select(Trial, Threshold, Interval, Visit_Count)
+
+# This will give you a combined data table with Trial, Interval, and Visit counts across all thresholds
+head(spc_tbl_combined)
+
+
+# plots for visit counts
+
+
+library(ggplot2)
+
+# Create the plot with y-axis starting at 0
+ggplot(spc_tbl_combined, aes(x = Threshold, y = Visit_Count, fill = Interval)) + 
+  geom_boxplot() + 
+  labs(title = "", x = "Threshold", y = "Visit Count") + 
+  theme_minimal() + 
+  scale_fill_manual(values = c("ACTUAL" = "#8462AC", "x1min" = "darkslategray3", "x5min" = "khaki"), 
+                    labels = c("ACTUAL" = "Actual", "x1min" = "1-min", "x5min" = "5-min")) + 
+  theme(legend.title = element_blank()) + 
+  ylim(0, NA)  # Start y-axis at zero, letting it scale to max automatically
+
+
+
+
+```
+
+```{r structure visit times tables}
+colnames(half_hoursimulation_results)[c(5, 6, 7)] <- c("ACTUAL", "1min", "5min")
+colnames(onehoursimulation_results)[c(5, 6, 7)] <- c("ACTUAL", "1min", "5min")
+colnames(twohoursimulation_results)[c(5, 6, 7)] <- c("ACTUAL", "1min", "5min")
+
+half_hoursimulation_results <- half_hoursimulation_results[-1, ]
+onehoursimulation_results <- onehoursimulation_results[-1, ]
+twohoursimulation_results <- twohoursimulation_results[-1, ]
+
+half_hoursimulation_results$"5min" <- as.numeric(half_hoursimulation_results$"5min") * 300
+onehoursimulation_results$"5min" <- as.numeric(onehoursimulation_results$"5min") * 300
+twohoursimulation_results$"5min" <- as.numeric(twohoursimulation_results$"5min") * 300
+
+# Multiply values in 'Positions_1_Min_Residency_Time' by 60
+half_hoursimulation_results$"1min" <- as.numeric(half_hoursimulation_results$"1min") * 60
+onehoursimulation_results$"1min" <- as.numeric(onehoursimulation_results$"1min") * 60
+twohoursimulation_results$"1min" <- as.numeric(twohoursimulation_results$"1min") * 60
+
+
+# Subtract 300 from the '5min' column
+onehoursimulation_results$`5min` <- onehoursimulation_results$`5min` - 300
+half_hoursimulation_results$`5min` <- half_hoursimulation_results$`5min` - 300
+twohoursimulation_results$`5min` <- twohoursimulation_results$`5min` - 300
+
+library(reshape2)
+
+combined_data <- rbind(
+  data.frame(Table = "Half Hour", half_hoursimulation_results[, c("ACTUAL", "1min", "5min")]),
+  data.frame(Table = "One Hour", onehoursimulation_results[, c("ACTUAL", "1min", "5min")]),
+  data.frame(Table = "Two Hours", twohoursimulation_results[, c("ACTUAL", "1min", "5min")])
+)
+
+# Melt the data for ggplot
+melted_data <- melt(combineddatatry, id.vars = "Table")
+
+# Create boxplots
+ggplot(melted_data2, aes(x = Table, y = value, fill = variable)) +
+  geom_boxplot() +
+  labs(title = "Visit Times by Threshold and Interval", x = "Threshold", y = "Visit Time") +
+  theme_minimal() +
+scale_fill_brewer(palette = "vidris")
+
+```
 
 
 ```{r analyze the table}
