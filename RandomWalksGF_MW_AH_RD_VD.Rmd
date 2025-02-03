@@ -120,9 +120,19 @@ num_steps <- simulation_duration
 # Step length (equal to the speed of the sharks)
 step_length <- speed_blue
 
-# Perform random walk with boundaries
-blue_path <- random_walk_with_boundaries(num_steps, step_length, interval_duration, boundary_radius, initial_position = c(100, 0))
+# Generate a random starting position 250 meters from (0,0)
+generate_random_start <- function(radius) {
+  angle <- runif(1, 0, 2 * pi)  # Random angle in radians
+  x <- radius * cos(angle)  # Convert polar to Cartesian
+  y <- radius * sin(angle)
+  return(c(x, y))
+}
 
+# Set the new random start position
+random_start_position <- generate_random_start(250)
+
+# Perform random walk with the new random start
+blue_path <- random_walk_with_boundaries(num_steps, step_length, interval_duration, boundary_radius, initial_position = random_start_position)
 # Add time column
 blue_path$time <- seq(0, by = 1, length.out = nrow(blue_path))
 
